@@ -449,9 +449,8 @@ The test: if the difficulty is in the *rules*, model the rules. If the difficult
 - Eric Evans, Domain-Driven Design, publisher page: https://www.domainlanguage.com/
 - Eric Evans, Domain-Driven Design Quickly: https://www.infoq.com/articles/domain-driven-design-quickly/
 - DDD reference site: https://domainlanguage.com/
-- Microsoft guidance on DDD aggregates: https://learn.microsoft.com/azure/architecture/microservices/model/tactical-ddd
-- Microsoft guidance on domain modeling patterns: https://learn.microsoft.com/azure/architecture/microservices/model
-- Microsoft DDD microservice patterns: https://learn.microsoft.com/azure/architecture/microservices/model/tactical-ddd
+- Microsoft guidance on tactical DDD patterns: https://learn.microsoft.com/azure/architecture/microservices/model/tactical-ddd
+- Microsoft guidance on domain modeling: https://learn.microsoft.com/azure/architecture/microservices/model
 - Martin Fowler, Anemic Domain Model: https://martinfowler.com/bliki/AnemicDomainModel.html
 - Martin Fowler, Domain Model: https://martinfowler.com/bliki/DomainModel.html
 - Martin Fowler, Repository: https://martinfowler.com/eaaCatalog/Repository.html

@@ -111,7 +111,10 @@ The security boundary is the server, not the model. Anything the model should no
 the server must not offer. Anything the model should not see, the server must not
 return.
 
-### Capability selection
+## Tool design
+
+Models select tools by name and description, and fill arguments from the input schema.
+Optimise the description and schema for that.
 
 | Primitive | Model-invoked | Purpose | Typical shape |
 | --- | --- | --- | --- |
@@ -121,13 +124,7 @@ return.
 
 Rule of thumb: if the model should decide when it happens, it is a tool. If the
 application decides, it is a resource. If the user decides, it is a prompt. Do not
-expose one thing as all three; you create three descriptions for the model to
-disambiguate for no benefit.
-
-## Tool design
-
-Models select tools by name and description, and fill arguments from the input schema.
-Optimise the description and schema for that.
+expose one thing as all three.
 
 Write descriptions that answer three questions:
 
@@ -327,6 +324,8 @@ Prompts are user-selected templates with declared arguments:
 ```
 
 Keep prompts free of authority claims. A prompt is a suggestion the user started.
+Registration code for both is in
+[references/typescript-sdk.md](references/typescript-sdk.md).
 
 ## Authorization for remote servers
 

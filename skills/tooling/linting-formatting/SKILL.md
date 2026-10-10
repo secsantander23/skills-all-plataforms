@@ -287,14 +287,14 @@ ESLint-plus-Prettier pairing when its rule coverage is sufficient for the projec
 
 Notes on the schema, which changed significantly in Biome v2:
 
-- `files.includes` replaces the earlier ignore-style arrays, and negated entries force
+- `files.includes` replaced the earlier ignore-style arrays; negated entries force
   exclusion. Check the v2 reference for the exact glob semantics rather than carrying a
   v1 pattern across.
 - `linter.rules.recommended` is superseded by a preset model. Use the group and rule
   structure shown above and verify against the configuration reference for your version.
 - `overrides` uses `includes` rather than `files` to select which files it applies to.
-- Run `biome migrate` to update a v1 configuration to the current schema.
-- `biome init --jsonc` scaffolds a minimal configuration.
+- Run `biome migrate` to update a v1 configuration, or `biome init --jsonc` to scaffold
+  a new one.
 
 Advantages: one binary, one configuration, fast enough that on-save linting is
 realistic. Limitations: fewer rules than ESLint, and no equivalent to ESLint's deep plugin
@@ -397,124 +397,53 @@ nothing in some tools, and a green build that linted zero files is worse than a 
 
 Two shapes:
 
-1. One root config with per-directory overrides. Simple, one install, one version.
-2. A base config package extended by each package. Explicit, independently versioned,
-   one extra indirection.
+1. One root config with per-directory overrides, using `basePath` to scope each object.
+   Simple, one install, one version.
+2. A base config package extended by each package. Explicit, independently versioned, one
+   extra indirection.
 
-For a moderate monorepo, shape one. Put the shared rules in the root `eslint.config.js`
-and use `basePath` to apply directory-specific settings.
+For a moderate monorepo, shape one. For Biome, a nested configuration extends the root
+with the string `"//"`, which resolves the project root at any nesting depth.
 
 ```javascript
 // eslint.config.js
-import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig(
   globalIgnores(["**/dist/**", "**/build/**", "**/node_modules/**"]),
-  js.configs.recommended,
   tseslint.configs.recommended,
-
   {
-    // Browser-facing packages.
+    name: "apps/web",
     basePath: "apps/web",
     files: ["src/**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
   },
-
   {
-    // Server-side packages.
+    name: "apps/api",
     basePath: "apps/api",
     files: ["src/**/*.ts"],
-    languageOptions: { globals: { ...globals.node } },
+    languageOptions: { globals: globals.node },
     rules: { "no-console": "off" },
   },
 );
 ```
 
-For Biome, a nested configuration extends the root with the string `"//"`, which
-resolves the project root without a relative path, and at any nesting depth.
-
-```jsonc
-// packages/frontend/biome.json
-{ "extends": "//" }
-```
+Full per-directory configs, Biome nested configurations, affected-package detection, and
+the editor settings that keep local and CI in agreement are in
+[references/monorepo-lint.md](references/monorepo-lint.md).
 
 ## Custom rules
 
-Write one when a bug pattern recurs and no built-in rule covers it.
+Write one when a bug pattern recurs and no built-in rule covers it. A worked example, a
+`RuleModule` implementation, and the plugin wiring are in
+[references/custom-rules.md](references/custom-rules.md).
 
-```typescript
-// eslint-rules/no-floating-await.ts
-import type { TSESLint, TSESTree } from "typescript-eslint";
-
-const rule: TSESLint.RuleModule<MessageIds, Options> = {
-  meta: {
-    type: "problem",
-    docs: { description: "Disallow awaiting inside a non-async loop body without a bound." },
-    schema: [],
-    messages: {
-      unboundedAwait:
-        "This await is inside a loop over {{count}} items with no concurrency bound.",
-    },
-  },
-  defaultOptions: [],
-  create(context) {
-    const options = context.options[0] ?? {};
-    const maxConcurrency = options.maxConcurrency ?? 10;
-
-    return {
-      // Walk up from every AwaitExpression looking for an enclosing loop.
-      AwaitExpression(node: TSESTree.AwaitExpression) {
-        let current: TSESTree.Node | undefined = node.parent as TSESTree.Node | undefined;
-        let loop: TSESTree.Node | undefined;
-
-        while (current) {
-          if (
-            current.type === "ForStatement" ||
-            current.type === "ForOfStatement" ||
-            current.type === "WhileStatement" ||
-            current.type === "DoWhileStatement"
-          ) {
-            loop = current;
-            break;
-          }
-          current = current.parent as TSESTree.Node | undefined;
-        }
-
-        if (!loop) return;
-
-        const declaredItems = describeLoopBound(loop);
-        if (declaredItems === null || declaredItems <= maxConcurrency) return;
-
-        context.report({
-          node,
-          messageId: "unboundedAwait",
-          data: { count: String(declaredItems) },
-        });
-      },
-    };
-  },
-};
-
-type MessageIds = "unboundedAwait";
-type Options = [{ maxConcurrency?: number }];
-
-function describeLoopBound(node: TSESTree.Node): number | null {
-  if (node.type !== "ForOfStatement") return null;
-  const right = node.right;
-  if (right.type !== "ArrayExpression") return null;
-  return right.elements.length;
-}
-
-export default rule;
-```
-
-Every custom rule needs: a `meta.description`, a schema, a stable `messageId` rather
-than an inline string, a test, and an autofix only when the fix is provably safe. An
-unfixable rule that fires on legitimate code is worse than no rule, because the only
-response is a suppression.
+Every custom rule needs a `meta.description`, a schema, a stable `messageId` rather than
+an inline string, a test, and an autofix only when the fix is provably safe. An unfixable
+rule that fires on legitimate code is worse than no rule, because the only response is a
+suppression.
 
 ## Checklist
 

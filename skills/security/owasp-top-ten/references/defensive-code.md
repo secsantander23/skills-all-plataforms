@@ -173,8 +173,8 @@ Also enforce: timeouts, `allow_redirects=False` (or re-validate each hop), a res
 | .NET | `System.Text.Json`, protobuf | `BinaryFormatter`, `NetDataContractSerializer` |
 | PHP | `json_decode` | `unserialize` |
 
-```python
-# Prototype pollution in JavaScript: deep merge of untrusted JSON.
+```javascript
+// Prototype pollution in JavaScript: deep merge of untrusted JSON.
 function safeMerge(target, source) {
   for (const [key, value] of Object.entries(source)) {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;

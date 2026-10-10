@@ -62,20 +62,25 @@ accepts a directory, `~/` paths, absolute paths, or an HTTP catalog.
 | Category | Focus |
 | --- | --- |
 | [agent-platforms](skills/agent-platforms) | Writing skills, MCP servers, agent evals, cost, prompt-injection defense, LLM engineering |
-| [api-protocols](skills/api-protocols) | REST, GraphQL, gRPC, auth, queues, webhooks, contracts |
-| [architecture](skills/architecture) | System design, DDD, clean architecture, event-driven |
-| [backend](skills/backend) | API design, auth, background jobs, webhooks, validation |
+| [api-protocols](skills/api-protocols) | HTTP/2/3 wire protocol, content negotiation, message queue protocols, real-time protocols |
+| [architecture](skills/architecture) | System design, DDD, clean architecture |
+| [backend](skills/backend) | REST/GraphQL API design, auth, background jobs, webhooks, contracts, validation |
 | [cloud](skills/cloud) | AWS, GCP, Azure deployment, cost and reliability |
 | [data-ai-ml](skills/data-ai-ml) | Prompting, RAG, agents, data pipelines |
-| [database](skills/database) | Postgres, schema design, migrations, transactions, Redis, MongoDB, query tuning |
+| [database](skills/database) | Postgres tuning, schema design, query optimization, transactions, Redis, MongoDB |
 | [devops](skills/devops) | Docker, Kubernetes, CI/CD, IaC, Linux ops |
 | [docs-quality](skills/docs-quality) | Technical writing, API docs, READMEs, docs-as-code |
 | [frontend](skills/frontend) | React, Vue, Svelte, CSS architecture, design systems, a11y, forms |
 | [git-workflow](skills/git-workflow) | Conventional commits, code review, branching, monorepos |
-| [languages](skills/languages) | TypeScript, JavaScript, Python, Go, Rust, Java, C#, SQL |
-| [mobile](skills/mobile) | React Native, Flutter, iOS, Android, offline sync, app lifecycle |
-| [networking](skills/networking) | DNS, TLS, reverse proxies, WebSockets |
-| [observability](skills/observability) | Logging, metrics, tracing, incident response |
+| [languages](skills/languages) | TypeScript, JavaScript, Python, Go, SQL |
+| [mobile](skills/mobile) | Flutter, iOS, React Native, Android, offline sync, app lifecycle |
+| [observability](skills/observability) | Structured logging, metrics, tracing, incident response |
+| [web-platform](skills/web-platform) | HTTP, security headers, browser runtime, Web Vitals |
+
+**86 skills, ~42,000 lines, 19 categories.**
+
+Two categories remain incomplete: `database` has 5 of 7 planned skills, and `networking`
+(DNS, TLS, reverse proxies, WebSockets) has none yet.
 | [performance](skills/performance) | Profiling, caching, concurrency, scalability |
 | [security](skills/security) | OWASP Top 10, secure review, secrets, crypto |
 | [testing](skills/testing) | Unit, integration, E2E, TDD, load testing |

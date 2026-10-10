@@ -286,9 +286,7 @@ interface ItemDao {
 abstract class AppDatabase : RoomDatabase() {
     abstract fun itemDao(): ItemDao
 }
-```
 
-```kotlin
 class ItemRepository(private val dao: ItemDao, private val api: ItemApi) {
     // Room is the single source of truth. The UI observes the database, not the network.
     val items: Flow<List<Item>> = dao.observeAll().map { rows -> rows.map(ItemEntity::toDomain) }
@@ -308,10 +306,10 @@ and commit the exported JSON so migrations can be tested. Use `AutoMigration` wh
 suffices, or write and test a `Migration`. Never use `fallbackToDestructiveMigration` on a
 database holding user data.
 
-Background work with WorkManager is covered in `references/data-and-navigation.md`.
 WorkManager is neither exact nor immediate; `ExistingPeriodicWorkPolicy` values are `KEEP`,
-`REPLACE`, `UPDATE`, and `CANCEL_AND_REENQUEUE`. Sync architecture is covered by the
-`mobile-offline-sync` skill.
+`REPLACE`, `UPDATE`, and `CANCEL_AND_REENQUEUE`. DataStore, Paging 3, DI, migrations, and
+full WorkManager and Navigation code are in `references/data-and-navigation.md`. Sync
+architecture is covered by the `mobile-offline-sync` skill.
 
 ## Runtime permissions
 
@@ -389,6 +387,25 @@ dependencies {
 }
 ```
 
+Manifest essentials:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application android:label="@string/app_name" android:theme="@style/Theme.MyApp">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+```
+
 Facts that bite:
 
 - `namespace` in the Gradle file replaces the manifest `package` attribute.
@@ -437,10 +454,9 @@ class FeedViewModelTest {
     @Test
     fun emitsReadyState() = runTest(dispatcher) {
         val viewModel = FeedViewModel(FakeFeedRepository(listOf(FeedItem("1", "Alpha"))))
-
         val states = mutableListOf<FeedUiState>()
-        val job = backgroundScope.launch { viewModel.uiState.toList(states) }
 
+        val job = backgroundScope.launch { viewModel.uiState.toList(states) }
         advanceUntilIdle()
 
         assertTrue(states.any { it is FeedUiState.Ready })
@@ -453,23 +469,16 @@ class FeedViewModelTest {
 Without them you get
 `IllegalStateException: Module with the Main dispatcher is missing`.
 
+Compose UI tests use `createComposeRule()` and semantic finders:
+
 ```kotlin
-@RunWith(AndroidJUnit4::class)
-class FeedScreenTest {
-    @get:Rule
-    val composeTestRule = createComposeRule()
-
-    @Test
-    fun showsItems() {
-        composeTestRule.setContent {
-            MaterialTheme {
-                FeedScreen(uiState = FeedUiState.Ready(listOf(FeedItem("1", "Alpha"))))
-            }
-        }
-
-        composeTestRule.onNodeWithText("Alpha").assertIsDisplayed()
+composeTestRule.setContent {
+    MaterialTheme {
+        FeedScreen(uiState = FeedUiState.Ready(listOf(FeedItem("1", "Alpha"))))
     }
 }
+
+composeTestRule.onNodeWithText("Alpha").assertIsDisplayed()
 ```
 
 - `debugImplementation("androidx.compose.ui:ui-test-manifest")` is required, or you get

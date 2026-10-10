@@ -44,21 +44,13 @@ Publisher --(routing key: order.created)--> direct exchange: orders
 ```
 
 ```bash
-# Declare topology and inspect it (RabbitMQ management CLI, real flags per rabbitmqctl --help).
+# Inspect topology with the RabbitMQ management CLI. Confirm available flags with --help.
 rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
 rabbitmqctl list_exchanges name type durable
 rabbitmqctl list_bindings source_name destination_name routing_key
-
-# Publish with publisher confirms enabled, from Python using pika.
-python - <<'PY'
-import pika, json
-
-params = pika.URLParameters("amqp://guest:guest@localhost:5672/%2F")
-channel = params.__class__ and None  # placeholder removed below
-PY
 ```
 
-That heredoc was intentionally awkward. Use a real script instead:
+Publish with confirms enabled, from Python using `pika`:
 
 ```python
 import json
@@ -69,19 +61,20 @@ params = pika.URLParameters("amqp://guest:guest@localhost:5672/%2F")
 connection = pika.BlockingConnection(params)
 channel = connection.channel()
 
-channel.confirm_delivery()  # publisher confirms: broker NACKs if it cannot accept
-result = channel.basic_publish(
+# Turn on publisher confirms: the broker then acks or nacks each publish.
+channel.confirm_delivery()
+confirmed = channel.basic_publish(
     exchange="orders",
     routing_key="order.created",
     body=json.dumps({"order_id": "A-1", "total_cents": 4200}),
     properties=pika.BasicProperties(
         content_type="application/json",
-        delivery_mode=pika.DeliveryMode.Persistent,  # survive broker restart
-        message_id="evt-2f9c1e",                       # your dedup key
+        delivery_mode=pika.DeliveryMode.Persistent,  # survives broker restart
+        message_id="evt-2f9c1e",                      # your dedup key
     ),
-    mandatory=True,
+    mandatory=True,  # return the message if nothing is bound, instead of dropping it
 )
-print("confirmed:", result)
+print("confirmed:", confirmed)
 connection.close()
 ```
 

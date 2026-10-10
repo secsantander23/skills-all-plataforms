@@ -281,7 +281,9 @@ stack trace, a connection string, or a token.
 
 Choose stdio for a local tool. Choose Streamable HTTP when the server outlives the
 session, is shared between users, or needs to scale. Adding HTTP means you own sessions,
-authentication, rate limiting, and tenancy, none of which stdio gives you for free.
+authentication, rate limiting, and tenancy, none of which stdio gives you for free. The
+Streamable HTTP handler and per-session server construction are in
+[references/typescript-sdk.md](references/typescript-sdk.md).
 
 ### The stdout rule
 
@@ -331,18 +333,18 @@ Keep prompts free of authority claims. A prompt is a suggestion the user started
 A remote MCP server is an internet-facing API holding real credentials. Treat it that way.
 
 - Use OAuth as the protocol specifies, and implement the discovery documents the
-  authorization specification defines: the authorization server metadata and the
-  protected resource metadata. Do not invent your own token endpoints or a bespoke
-  header scheme.
-- Never accept a token from the client and forward it to a downstream API. That token
-  passthrough pattern turns your server into an amplifier for whatever the client is
-  authorised for. Exchange tokens at your server and issue your own downstream
-  credentials.
+  authorization specification defines. Do not invent your own token endpoints or a
+  bespoke header scheme.
+- Never accept a token from the client and forward it to a downstream API. Exchange
+  tokens at your server and issue your own downstream credentials.
 - Derive the effective scope from the token plus the authenticated subject, never from
   a tool argument. A model-supplied `user_id` is attacker-controlled.
 - Rate limit per token and per subject, and log the subject with every tool call.
-- Reject any outbound URL the model can influence unless it is on an allow list, or you
-  have built a server-side request forgery defence.
+- Reject any outbound URL the model can influence unless it is allow-listed.
+
+The confused-deputy pattern, token passthrough, server-side request forgery, and the
+full authorization checklist are in
+[references/security-and-auth.md](references/security-and-auth.md).
 
 ## Testing
 
@@ -396,13 +398,12 @@ problem, not a code problem. See the `agent-evaluation` skill for the harness pa
   server by running `command args`, so the file must be runnable directly.
 - Ship a `files` array so the published tarball contains the build output and nothing
   else.
-- Document the exact launch command with an absolute path, and show both the POSIX and
-  Windows JSON forms when clients differ. Clients that spawn a server need an absolute
-  path because their working directory is not yours.
-- Give the server a stable, human-meaningful name. Users see it in a permission prompt
-  next to every action it can take.
-- For a remote server, document the URL, the authorization flow, and a way to rotate
-  credentials.
+- Document the launch command with an absolute path, and show both the POSIX and Windows
+  JSON forms when clients differ. Clients that spawn a server need an absolute path
+  because their working directory is not yours.
+- Give the server a stable, human-meaningful name. Users see it next to every action it
+  can take in a permission prompt.
+- For a remote server, document the URL, the authorization flow, and credential rotation.
 
 ## Checklist
 

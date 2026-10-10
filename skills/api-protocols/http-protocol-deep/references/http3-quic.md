@@ -76,7 +76,7 @@ cache-control: max-age=86400
 `ma` is the advertised lifetime in seconds; clients use it to decide whether to probe again. `Alt-Svc` on the response means the current connection was fine, so the client must not break it. Some clients require a second, separate response carrying `Alt-Svc` before they switch, so do not expect the very first response to trigger adoption.
 
 - HTTP/3 requires UDP reachability to the port. Middleboxes and enterprise networks routinely block UDP 443 even when they pass TCP 443, so an HTTP/3 listener on the same host can be fully unusable.
-- `Upgrade` does not exist in HTTP/3. RFC 9113 deprecated the `h2c` upgrade token for HTTP/2, and RFC 9114 Section 4.5 defines no upgrade for HTTP/3. Long-lived protocols use the extended `CONNECT` method instead (RFC 9114 Section 4.4, and the IETF Internet-Draft on extended `CONNECT`).
+- `Upgrade` does not exist in HTTP/3. RFC 9113 deprecated the `h2c` upgrade token for HTTP/2, and RFC 9114 Section 4.5 defines no upgrade for HTTP/3. Long-lived protocols ride on the extended `CONNECT` method, which RFC 9114 Section 4.4 discusses; read that section and the `:protocol` pseudo-header handling it describes before implementing it.
 
 ## Connection migration
 
@@ -120,5 +120,5 @@ Verify which HTTP/3 client your stack links before relying on any of the above. 
 - RFC 9001, Using TLS to Secure QUIC - https://www.rfc-editor.org/rfc/rfc9001
 - RFC 8470, Using Early Data in HTTP - https://www.rfc-editor.org/rfc/rfc8470
 - IETF Internet-Draft, WebTransport over HTTP/3 - https://datatracker.ietf.org/doc/draft-ietf-webtrans-http3/
-- IETF Internet-Draft, Extended CONNECT for HTTP - https://datatracker.ietf.org/doc/draft-ietf-httpbis-unproxy/
+- IETF Internet-Draft, WebTransport over HTTP/2 - https://datatracker.ietf.org/doc/draft-ietf-webtrans-http2/
 - MDN, HTTP/3 - https://developer.mozilla.org/en-US/docs/Web/HTTP/3

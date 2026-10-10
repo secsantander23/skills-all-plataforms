@@ -55,6 +55,65 @@ Then relax the test to state the next rule, watch it fail again, and implement i
 
 With a green test as a safety net, you can rename, extract, and restructure. Then run the tests again. If a test had to change to accommodate the refactor, it was coupled to structure, not behaviour.
 
+## Worked example: a full cycle
+
+Start from the rule, not the code.
+
+```python
+# RED - the rule: an order with no lines is not submittable.
+def test_empty_order_cannot_be_submitted():
+    order = Order(lines=[])
+
+    with pytest.raises(EmptyOrder):
+        order.submit()
+```
+
+Run it: `EmptyOrder` does not exist, so it fails at import. The intent is clear, so write the minimum.
+
+```python
+class EmptyOrder(Exception):
+    pass
+
+
+class Order:
+    def __init__(self, lines):
+        self.lines = lines
+
+    def submit(self):
+        raise NotImplementedError
+```
+
+Still red. Make it green with the smallest thing:
+
+```python
+    def submit(self):
+        if not self.lines:
+            raise EmptyOrder
+```
+
+Green. Refactor while the test stays green, then state the next rule and repeat:
+
+```python
+def test_order_total_is_the_sum_of_line_totals():
+    order = Order(lines=[Line(unit_price_cents=1000, quantity=2), Line(unit_price_cents=250, quantity=1)])
+
+    order.submit()
+
+    assert order.total_cents == 2250
+
+
+def test_order_is_stamped_with_submission_time():
+    # The clock arrives as data, because a real clock is not testable.
+    order = Order(lines=[Line(unit_price_cents=1000, quantity=1)])
+    now = datetime(2024, 3, 1, 12, 0, tzinfo=timezone.utc)
+
+    order.submit(now)
+
+    assert order.submitted_at == now
+```
+
+Two things happened here that matter more than the individual tests: the total rule fell out of the second cycle almost for free, and the third cycle forced a signature change (`submit(now)`) that a time-free design needed from the start. Both were discovered by writing the test first.
+
 ## The red bar
 
 Discipline: **you do not write production code until you have seen the test fail.** This is the whole mechanism. Without a genuine red, there is no evidence that the test has power.
@@ -162,6 +221,20 @@ def test_empty_cart_subtotal_currently_raises():
 Name characterization tests so it is obvious they describe existing behavior. Mark them so you can find and revisit them. As you refactor, promote them to proper tests, and delete the ones that describe a bug you have actually fixed.
 
 Do not write characterization tests for code you are about to delete.
+
+See `references/legacy-and-seams.md` for a step-by-step procedure for introducing seams into code you cannot test, and for the mechanical refactorings that create them.
+
+## Adding tests to an untested module
+
+An adoption sequence that avoids a big-bang test push:
+
+1. **Pick the module with the highest defect density or cost.** Read the bug tracker, not the coverage report.
+2. **Write one characterization test** for its most important current behavior and run it against the unmodified code.
+3. **Extend to the branch points**, one behavior per test, following the "one reason to fail" rule.
+4. **Find a seam.** Identify the first thing that makes the next test slow or impossible, and change the design to introduce a seam.
+5. **Repeat.** Each step is a small, reviewable change that leaves the suite green.
+
+Coverage grows as a side effect of step 3 and 4. Do not start with step 3 alone: tests that require the real database, the real clock, and the real network are what made the module untestable in the first place.
 
 ## What not to TDD
 

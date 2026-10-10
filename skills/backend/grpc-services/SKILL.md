@@ -108,25 +108,21 @@ protoc -I. --go_out=gen --go_opt=paths=source_relative \
 
 ```python
 # server.py
+# protoc writes gen/catalog/v1/products_pb2.py for the package above, so the
+# Python import path mirrors the proto directories. Make sure the generated
+# directories are importable (package markers or a namespace layout) and that
+# gen/ is on sys.path or your PYTHONPATH.
 from __future__ import annotations
 
 import logging
 from concurrent import futures
-from datetime import datetime, timezone
 
 import grpc
-from google.protobuf import empty_pb2, timestamp_pb2
 
-import catalog.v1.products_pb2 as pb
-import catalog.v1.products_pb2_grpc as pb_grpc
+from catalog.v1 import products_pb2 as pb
+from catalog.v1 import products_pb2_grpc as pb_grpc
 
 log = logging.getLogger("catalog")
-
-
-def _ts(dt: datetime) -> timestamp_pb2.Timestamp:
-    out = timestamp_pb2.Timestamp()
-    out.FromDatetime(dt.astimezone(timezone.utc))
-    return out
 
 
 class ProductsServicer(pb_grpc.ProductsServicer):
@@ -218,8 +214,9 @@ Calling it (Python client with a deadline):
 
 ```python
 import grpc
-import catalog.v1.products_pb2 as pb
-import catalog.v1.products_pb2_grpc as pb_grpc
+
+from catalog.v1 import products_pb2 as pb
+from catalog.v1 import products_pb2_grpc as pb_grpc
 
 channel = grpc.insecure_channel("localhost:50051")
 stub = pb_grpc.ProductsStub(channel)
@@ -329,8 +326,6 @@ gRPC status codes are a fixed, small vocabulary; choose the one that tells the c
 | `INTERNAL` | Internal invariant broken | maybe | Bug, unhandled error. |
 | `UNAVAILABLE` | Temporarily down | yes | Server restarting, connection refused, overloaded. |
 | `DATA_LOSS` | Unrecoverable data loss | maybe | Corrupted storage. |
-| `UNAUTHENTICATED` | (see above) | | |
-| `UNAUTHENTICATED` duplicates `UNAUTHENTICATED`; see table above for the correct usage. | | | |
 
 Guide by intent:
 
@@ -403,91 +398,126 @@ Principles:
 Interceptors are the gRPC analogue of middleware. They run on both client and server and are the right place for cross-cutting concerns: authentication, structured logging, metrics, tracing, retries, panic recovery.
 
 ```python
+from __future__ import annotations
+
+import logging
 import time
+from collections.abc import Callable
+
 import grpc
-from typing import Any, Callable
+
+log = logging.getLogger("grpc")
 
 
-class AuthInterceptor(grpc.ServerInterceptor):
-    """Validate a bearer token from metadata and reject unauthenticated calls."""
+class AuthServerInterceptor(grpc.ServerInterceptor):
+    """Reject calls without a valid bearer token in the authorization metadata."""
 
     def __init__(self, verify: Callable[[str], dict | None]) -> None:
         self._verify = verify
 
     def intercept_service(self, continuation, handler_call_details):
-        md = dict(handler_call_details.invocation_metadata or ())
-        auth = md.get("authorization", "")
+        metadata = handler_call_details.invocation_metadata
+        auth = next((m.value for m in metadata if m.key == "authorization"), "")
         if not auth.startswith("Bearer "):
-            return _deny(handler_call_details, grpc.StatusCode.UNAUTHENTICATED, "missing bearer token")
-        claims = self._verify(auth[len("Bearer ") :])
+            return self._deny(handler_call_details, grpc.StatusCode.UNAUTHENTICATED,
+                               "missing bearer token")
+        claims = self._verify(auth[len("Bearer "):])
         if claims is None:
-            return _deny(handler_call_details, grpc.StatusCode.UNAUTHENTICATED, "invalid token")
+            return self._deny(handler_call_details, grpc.StatusCode.UNAUTHENTICATED,
+                               "invalid or expired token")
+        # Authorization state is not passed through intercept_service directly;
+        # read the same metadata inside resolvers, or use a context plugin.
         return continuation(handler_call_details)
 
+    @staticmethod
+    def _deny(details, code, message):
+        def behavior(request, context):
+            context.abort(code, message)
 
-def _deny(details, code, message):
-    # Build a handler that always aborts with the given status.
-    def deny_behavior(request, context):
-        context.abort(code, message)
-    return grpc.unary_unary_rpc_method_handler(
-        deny_behavior,
-        request_deserializer=details.request_deserializer,
-        response_serializer=details.response_serializer,
-    )
+        return grpc.unary_unary_rpc_method_handler(
+            behavior,
+            request_deserializer=details.request_deserializer,
+            response_serializer=details.response_serializer,
+        )
+```
 
+Note the limit of the pattern above: a denied call is returned as a **unary-unary** handler regardless of the real method's shape, so denial always works, but a successful streaming method still needs its own wrapper. That is why the language gRPC libraries ship typed interceptors (Python's `grpc.ServerInterceptor` subclasses per streaming kind, Go's `grpc.UnaryServerInterceptor` and `grpc.StreamServerInterceptor`, Java's `ServerInterceptor` with typed `startCall`). Prefer those over hand-wrapping, and keep the wrapping in one reusable place.
 
-class TimingInterceptor(grpc.ServerInterceptor):
-    """Record per-method latency as structured logs."""
+A logging interceptor that handles all four method shapes correctly, using the generated handler descriptor:
 
+```python
+class LoggingServerInterceptor(grpc.ServerInterceptor):
     def intercept_service(self, continuation, handler_call_details):
         handler = continuation(handler_call_details)
         if handler is None:
             return None
-        method = handler_call_details.method
         start = time.perf_counter()
+        method = handler_call_details.method
 
-        if handler.request_streaming and handler.response_streaming:
-            behavior = handler.stream_stream
-            kind = "bidi"
-        elif handler.request_streaming:
-            behavior = handler.stream_unary
-            kind = "client_stream"
-        elif handler.response_streaming:
-            behavior = handler.unary_stream
-            kind = "server_stream"
-        else:
-            behavior = handler.unary_unary
-            kind = "unary"
+        def finish(context):
+            code = context.code()
+            log.info(
+                "rpc_complete method=%s code=%s duration_ms=%.2f",
+                method,
+                code.name if code else "OK",
+                (time.perf_counter() - start) * 1000,
+            )
 
-        def timed(request, context):
-            try:
-                return behavior(request, context)
-            finally:
-                log.info(
-                    "rpc_complete",
-                    extra={
-                        "method": method,
-                        "kind": kind,
-                        "code": context.code().name if context.code() else "OK",
-                        "duration_ms": round((time.perf_counter() - start) * 1000, 2),
-                    },
+        if handler.response_streaming:
+            if handler.request_streaming:
+                handler = grpc.stream_stream_rpc_method_handler(
+                    _timed_stream(handler.stream_stream, finish),
+                    request_deserializer=handler.request_deserializer,
+                    response_serializer=handler.response_serializer,
                 )
+            else:
+                handler = grpc.unary_stream_rpc_method_handler(
+                    _timed_stream(handler.unary_stream, finish),
+                    request_deserializer=handler.request_deserializer,
+                    response_serializer=handler.response_serializer,
+                )
+        else:
+            if handler.request_streaming:
+                handler = grpc.stream_unary_rpc_method_handler(
+                    _timed_stream(handler.stream_unary, finish),
+                    request_deserializer=handler.request_deserializer,
+                    response_serializer=handler.response_serializer,
+                )
+            else:
+                inner = handler.unary_unary
 
-        return grpc.unary_unary_rpc_method_handler(
-            timed,
-            request_deserializer=handler.request_deserializer,
-            response_serializer=handler.response_serializer,
-        ) if kind == "unary" else _wrap_stream(handler, timed, kind, start, method)
+                def unary_unary(request, context):
+                    try:
+                        return inner(request, context)
+                    finally:
+                        finish(context)
+
+                handler = grpc.unary_unary_rpc_method_handler(
+                    unary_unary,
+                    request_deserializer=handler.request_deserializer,
+                    response_serializer=handler.response_serializer,
+                )
+        return handler
+
+
+def _timed_stream(inner, finish):
+    def wrapped(request_or_iterator, context):
+        try:
+            yield from inner(request_or_iterator, context)
+        finally:
+            finish(context)
+
+    return wrapped
 ```
 
-Note: wrapping a streaming handler requires preserving its streaming type. The shape above is illustrative; in production use the language's standard interceptor helpers rather than hand-wrapping handlers, because the streaming variants need their own wrappers. Check your language's gRPC docs for the provided interceptor base classes.
+The `finally` matters for streams: without it, a client that stops reading (breaking out of the `for` loop) leaves the log without a completion record, and your latency dashboards silently drop exactly the requests that were abandoned.
 
 Server interceptor ordering matters. Authentication should run before logging that trusts identity, and logging should run outermost so it captures everything including rejections. Wire them explicitly:
 
 ```python
 server = grpc.server(
     futures.ThreadPoolExecutor(max_workers=16),
-    interceptors=[TimingInterceptor(), AuthInterceptor(verify_token)],
+    interceptors=[LoggingServerInterceptor(), AuthServerInterceptor(verify_token)],
 )
 ```
 
@@ -558,7 +588,7 @@ Check the Buf action's documentation for the exact input names, since they evolv
 - **No deadline on the client call.** Symptom: the client thread blocks indefinitely when the server hangs; thread pools exhaust and the whole client dies. Fix: always set `timeout`.
 - **Ignoring `context.is_active()` in a long stream.** Symptom: server keeps processing messages for a cancelled or timed-out call, wasting CPU and potentially writing side effects nobody reads. Fix: check between iterations.
 - **Using `UNKNOWN` for everything.** Symptom: clients cannot decide what to retry, and retrying non-retryable operations causes cascading load. Fix: map to specific codes.
-- **Wrapping a streaming handler with a unary interceptor wrapper.** Symptom: runtime errors or silently broken streaming at the first response. Fix: preserve the handler type or use the language's streaming-aware interceptor helpers.
+- **Wrapping a streaming handler with a unary handler wrapper.** Symptom: runtime errors or silently broken streaming at the first response. Fix: preserve the handler shape (`unary_stream`, `stream_unary`, `stream_stream`), or use the language's typed interceptor helpers.
 - **Putting the error detail in the message string.** Symptom: clients must string-match on text to detect conditions, and any rewording breaks them. Fix: structured status details.
 - **A mutable global interceptor ordering.** Symptom: auth runs after logging that trusts the identity, so rejected calls log as authenticated. Fix: register interceptors explicitly, auth innermost, logging outermost.
 - **Gzip on every message by default.** Symptom: added CPU and a compression header on tiny messages, making small RPCs slower. Fix: compress selectively by message size or content type.
